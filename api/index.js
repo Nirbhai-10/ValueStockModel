@@ -128,16 +128,32 @@ function parseExcel(filePath) {
    Find & Load Excel
    ══════════════════════════════════════ */
 function findExcel() {
-    // 1. Direct path: co-located in api/data/data.xlsx
-    const direct = path.join(__dirname, "data", "data.xlsx");
-    if (fs.existsSync(direct)) return { fileName: "data.xlsx", filePath: direct };
+    // Check all possible locations where the Excel file might be
+    const candidates = [
+        path.join(__dirname, "data", "data.xlsx"),          // local: api/data/data.xlsx
+        path.join(__dirname, "api", "data", "data.xlsx"),   // Vercel: __dirname=/var/task, file at api/data/
+        path.join(__dirname, "..", "api", "data", "data.xlsx"),
+    ];
+    for (const p of candidates) {
+        if (fs.existsSync(p)) return { fileName: "data.xlsx", filePath: p };
+    }
 
-    // 2. Search parent directories for any .xlsx
-    const searchDirs = [__dirname, path.resolve(__dirname, ".."), path.resolve(__dirname, "../..")];
+    // Fallback: search dirs recursively for any .xlsx
+    const searchDirs = [
+        __dirname,
+        path.resolve(__dirname, "api"),
+        path.resolve(__dirname, ".."),
+    ];
     for (const dir of searchDirs) {
         try {
             const f = fs.readdirSync(dir).find((x) => x.endsWith(".xlsx") && !x.startsWith("~$"));
             if (f) return { fileName: f, filePath: path.join(dir, f) };
+            // Also check data/ subdirectory
+            const dataDir = path.join(dir, "data");
+            if (fs.existsSync(dataDir)) {
+                const df = fs.readdirSync(dataDir).find((x) => x.endsWith(".xlsx"));
+                if (df) return { fileName: df, filePath: path.join(dataDir, df) };
+            }
         } catch (e) { /* skip */ }
     }
     return { fileName: null, filePath: null };
