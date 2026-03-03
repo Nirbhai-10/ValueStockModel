@@ -127,43 +127,39 @@ function parseExcel(filePath) {
 /* ══════════════════════════════════════
    Find & Load Excel
    ══════════════════════════════════════ */
-function findExcelInDir(dir) {
-    try {
-        return fs.readdirSync(dir).find(
-            (f) => f.endsWith(".xlsx") && !f.startsWith("~$") && f.toLowerCase().includes("stock pick")
-        );
-    } catch (e) { return null; }
-}
+function findExcel() {
+    // 1. Direct path: co-located in api/data/data.xlsx
+    const direct = path.join(__dirname, "data", "data.xlsx");
+    if (fs.existsSync(direct)) return { fileName: "data.xlsx", filePath: direct };
 
-function locateExcel() {
-    const dirs = [
-        path.resolve(__dirname, ".."),
-        path.resolve(__dirname),
-        path.resolve(__dirname, "../.."),
-    ];
-    for (const dir of dirs) {
-        const f = findExcelInDir(dir);
-        if (f) return { dir, fileName: f, filePath: path.join(dir, f) };
+    // 2. Search parent directories for any .xlsx
+    const searchDirs = [__dirname, path.resolve(__dirname, ".."), path.resolve(__dirname, "../..")];
+    for (const dir of searchDirs) {
+        try {
+            const f = fs.readdirSync(dir).find((x) => x.endsWith(".xlsx") && !x.startsWith("~$"));
+            if (f) return { fileName: f, filePath: path.join(dir, f) };
+        } catch (e) { /* skip */ }
     }
-    return { dir: dirs[0], fileName: null, filePath: null };
+    return { fileName: null, filePath: null };
 }
 
-let excel = locateExcel();
+let excel = findExcel();
 let data = null;
 let lastUpdated = null;
 let loadError = null;
 
-if (excel.filePath && fs.existsSync(excel.filePath)) {
+if (excel.filePath) {
     try {
         data = parseExcel(excel.filePath);
         lastUpdated = new Date().toISOString();
-        console.log(`✅ Data loaded from "${excel.fileName}"`);
+        loadError = null;
+        console.log(`✅ Data loaded from "${excel.fileName}" at ${excel.filePath}`);
     } catch (err) {
         loadError = err.message;
         console.error("❌ Error parsing Excel:", err.message);
     }
 } else {
-    loadError = `Excel file not found. Searched: ${[__dirname, path.resolve(__dirname, "..")].join(", ")}`;
+    loadError = `Excel file not found. __dirname=${__dirname}`;
     console.error("❌", loadError);
 }
 
