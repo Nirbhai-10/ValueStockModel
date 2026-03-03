@@ -1,15 +1,15 @@
 /**
  * server.js
- * Express server with file-watcher for live Excel reload.
+ * Express server — works both locally (with file-watcher) and on Vercel (serverless).
  */
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
-const chokidar = require("chokidar");
 const { parseExcel } = require("./parse_excel");
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+const IS_VERCEL = !!process.env.VERCEL;
 
 /* ─── Locate the Excel file ─── */
 const DATA_DIR = __dirname;
@@ -29,7 +29,6 @@ let data = null;
 let lastUpdated = null;
 
 function reload() {
-    // Re-search in case file was renamed
     excelFileName = findExcelFile();
     excelPath = excelFileName ? path.join(DATA_DIR, excelFileName) : null;
     if (!excelPath || !fs.existsSync(excelPath)) {
@@ -47,20 +46,26 @@ function reload() {
 
 reload();
 
-/* ─── File Watcher ─── */
-const watcher = chokidar.watch(DATA_DIR, {
-    ignored: /(^|[\/\\])\..|(node_modules|public)/,
-    persistent: true,
-    ignoreInitial: true,
-    awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 500 },
-});
-
-watcher.on("all", (event, filePath) => {
-    if (filePath.endsWith(".xlsx") && !path.basename(filePath).startsWith("~$")) {
-        console.log(`🔄 Excel change detected (${event}): ${path.basename(filePath)}`);
-        reload();
+/* ─── File Watcher (local only) ─── */
+if (!IS_VERCEL) {
+    try {
+        const chokidar = require("chokidar");
+        const watcher = chokidar.watch(DATA_DIR, {
+            ignored: /(^|[\/\\])\..|(node_modules|public)/,
+            persistent: true,
+            ignoreInitial: true,
+            awaitWriteFinish: { stabilityThreshold: 2000, pollInterval: 500 },
+        });
+        watcher.on("all", (event, filePath) => {
+            if (filePath.endsWith(".xlsx") && !path.basename(filePath).startsWith("~$")) {
+                console.log(`🔄 Excel change detected (${event}): ${path.basename(filePath)}`);
+                reload();
+            }
+        });
+    } catch (e) {
+        console.log("ℹ️  chokidar not available, file-watching disabled");
     }
-});
+}
 
 /* ─── Static files ─── */
 app.use(express.static(path.join(__dirname, "public")));
@@ -99,7 +104,16 @@ app.get("/api/diagnostics", (req, res) => {
     res.json(data?.diagnostics || {});
 });
 
-/* ─── Start ─── */
-app.listen(PORT, () => {
-    console.log(`\n🚀 Stock Pick Dashboard running at http://localhost:${PORT}\n`);
+/* ─── Catch-all: serve index.html for SPA ─── */
+app.get("*", (req, res) => {
+    res.sendFile(path.join(__dirname, "public", "index.html"));
 });
+
+/* ─── Start (local only) ─── */
+if (!IS_VERCEL) {
+    app.listen(PORT, () => {
+        console.log(`\n🚀 Stock Pick Dashboard running at http://localhost:${PORT}\n`);
+    });
+}
+
+module.exports = app;
